@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 # Load API key from Streamlit secrets
-API_KEY = st.secrets[739908b86129b53cd835f3646a3de8c8 ]
+API_KEY = st.secrets["FRED_API_KEY"]
 
 # Function to fetch real-time data from FRED API
 def fetch_fred_data(series_id):
