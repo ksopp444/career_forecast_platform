@@ -1,70 +1,62 @@
-
-import requests
 import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-# Load API key from Streamlit secrets
-API_KEY = st.secrets["FRED_API_KEY"]
-
-# Function to fetch real-time data from FRED API
-def fetch_fred_data(series_id):
-    FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
-    params = {
-        'series_id': series_id,
-        'api_key': API_KEY,
-        'file_type': 'json'
-    }
-    response = requests.get(FRED_BASE_URL, params=params)
-    data = response.json()
-    observations = data['observations']
-    return pd.DataFrame(observations)
-
-# Fetch real-time CPI data
-cpi_real_time = fetch_fred_data("CPIAUCSL")  # Replace with actual CPI series ID
-
 # Load the adjusted dataset for income projections
 data = pd.read_csv('Adjusted_Synthetic_Time_Series_Income_Data.csv')
 
-# Function to run forecast with real-time data
-def run_forecast_with_real_time(major, cpi_values, steps=4):
+# Function to run the forecast with adjustable factors
+def run_forecast_with_adjustments(major, cpi_values, gdp_values, experience_values):
     data_filtered = data[data['Major'] == major]
-    data_agg = data_filtered.groupby('Year').agg({'Income': 'mean', 'CPI': 'mean'}).reset_index()
+    data_agg = data_filtered.groupby('Year').agg({'Income': 'mean', 'CPI': 'mean', 'GDP': 'mean', 'Years_of_Experience': 'mean'}).reset_index()
     
     income_ts = data_agg['Income'].values
-    cpi_ts = data_agg['CPI'].values
+    cpi_ts = np.array(cpi_values)  # Using the CPI values set by students
+    gdp_ts = np.array(gdp_values)  # Using the GDP values set by students
+    experience_ts = np.array(experience_values)  # Using the experience values set by students
     
-    exog_vars = np.column_stack([cpi_ts])
+    # Create exogenous variables (CPI, GDP, experience)
+    exog_vars = np.column_stack([cpi_ts, gdp_ts, experience_ts])
     
     # Fit the ARIMA model
     model = SARIMAX(income_ts, exog=exog_vars, order=(1, 1, 1)).fit(disp=False)
     
-    # Use real-time CPI data for future predictions
-    future_cpi = np.array(cpi_values).reshape(-1, 1)
-    forecast = model.get_forecast(steps=steps, exog=future_cpi)
+    # Forecast for the next 4 years using the student inputs
+    forecast = model.get_forecast(steps=4, exog=np.column_stack([cpi_values, gdp_values, experience_values]))
     
     return income_ts, forecast.predicted_mean
 
 # Streamlit Interface
-st.title("Career Path Forecast with Real-Time Data")
+st.title("Interactive Career Path Forecast")
 
-# Select major
+# User input for major
 major = st.selectbox("Select Major", options=["Accounting", "Finance"])
 
-# Use real-time CPI data
-st.subheader("Real-Time CPI Values for Future Projections")
-cpi_values = cpi_real_time['value'][-4:].astype(float).tolist()  # Use last 4 CPI values for forecast
+# Sliders for CPI, GDP, and years of experience
+st.subheader("Adjust Economic Factors:")
+cpi_values = []
+gdp_values = []
+experience_values = []
 
-# Run forecast with real-time data
-income_ts, forecast_mean = run_forecast_with_real_time(major, cpi_values)
+for i in range(4):
+    cpi = st.slider(f"Year {i+1} CPI", 250, 300, 265)
+    gdp = st.slider(f"Year {i+1} GDP Growth (%)", 1.0, 5.0, 2.5)
+    experience = st.slider(f"Year {i+1} Average Years of Experience", 1, 30, 10)
+    
+    cpi_values.append(cpi)
+    gdp_values.append(gdp)
+    experience_values.append(experience)
+
+# Run forecast with the adjusted values
+income_ts, forecast_mean = run_forecast_with_adjustments(major, cpi_values, gdp_values, experience_values)
 
 # Plot the results
-st.subheader(f"Income Forecast for {major} Major with Real-Time CPI")
+st.subheader(f"Income Forecast for {major} Major with Adjusted Factors")
 fig, ax = plt.subplots()
 ax.plot(np.arange(len(income_ts)), income_ts, label="Actual Income")
 ax.plot(np.arange(len(income_ts), len(income_ts) + len(forecast_mean)), forecast_mean, label="Forecasted Income", linestyle='--')
-ax.set_title(f'Income Forecast for {major} Major with Real-Time CPI')
+ax.set_title(f'Income Forecast for {major} Major with Adjusted Factors')
 ax.legend()
 st.pyplot(fig)
